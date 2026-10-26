@@ -19,6 +19,7 @@ export async function api(request, env) {
  const raw=await request.text();if(raw.length>2000000)return json({error:'Zu große Sicherung.'},413);
  let body,data;try{body=JSON.parse(raw);data=validateBackup(body.data);if(!Number.isInteger(body.revision)||body.revision<0)throw Error();}catch{return json({error:'Ungültige Daten.'},400);}
  if(body.userId!==user)return json({error:'account_changed'},409);
+ if(!Array.isArray(body.data.habits)||!Array.isArray(body.data.habitEntries))return json({error:'Bitte die App neu laden, bevor du synchronisierst.'},426);
  data.active=null;
  const result=await env.DB.prepare('INSERT INTO training_states (user_id, revision, payload) VALUES (?, 1, ?) ON CONFLICT(user_id) DO UPDATE SET revision = training_states.revision + 1, payload = excluded.payload WHERE training_states.revision = ?').bind(user,JSON.stringify(data),body.revision).run();
  if(!result.meta.changes)return json({error:'Parallel geändert.'},409);

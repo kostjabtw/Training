@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "python3 -m http.server 3000 --directory dist",
     "test": "node tests/domain.test.js && node tests/upgrade.test.js",
-    "check": "node --check dist/account.js && node --check dist/app.js && node --check dist/domain.js && node --check dist/storage.js && node --check dist/sw.js && node --check dist/features.js && node --check dist/sync.js",
+    "check": "node --check dist/habits.js && node --check dist/account.js && node --check dist/app.js && node --check dist/domain.js && node --check dist/storage.js && node --check dist/sw.js && node --check dist/features.js && node --check dist/sync.js",
     "build": "node scripts/build.mjs"
   }
 }

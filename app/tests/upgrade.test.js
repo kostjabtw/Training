@@ -29,3 +29,17 @@ test('stale tab cannot write its data after a server-side account switch',async(
  const response=await worker.fetch(new Request('https://example.test/api/sync',{method:'PUT',headers:{Origin:'https://example.test','Content-Type':'application/json','oai-authenticated-user-id':'bob'},body:JSON.stringify({userId:'alice',revision:0,data:emptyState()})}),{DB});assert.equal(response.status,409);assert.equal((await response.json()).error,'account_changed');
  const result=await(await worker.fetch(request('GET','bob'),{DB})).json();assert.equal(result.data,null);
 });
+
+test('habit migration, round-trip, independent entries and deletion survive sync',()=>{
+ const old=emptyState();delete old.habits;delete old.habitEntries;assert.deepEqual(validateBackup(old).habits,[]);
+ const h={id:'habit-reading',name:'Lesen',description:'',color:'#609ff3',icon:'book',kind:'build',tracking:'counter',target:10,unit:'Seiten',category:'Alltag',days:[0,1,2,3,4,5,6],streakGoal:30,archived:false,createdDate:'2026-10-01',updatedAt:'2026-10-26T10:00:00Z'};
+ const a=emptyState();a.habits=[h];a.habitEntries=[{id:'habit-reading-2026-10-25',habitId:h.id,date:'2026-10-25',value:10,note:'Gut',updatedAt:'2026-10-25T12:00:00Z'}];
+ const b=validateBackup(a);b.habitEntries=[{...a.habitEntries[0],id:'habit-reading-2026-10-26',date:'2026-10-26',updatedAt:'2026-10-26T12:00:00Z'}];
+ const merged=validateBackup(mergeStates(a,b));assert.equal(merged.habitEntries.length,2);assert.equal(merged.habits[0].name,'Lesen');
+ b.deleted[a.habitEntries[0].id]='2026-10-27T00:00:00Z';assert.equal(mergeStates(a,b).habitEntries.length,1);
+ for(const field of ['color','tracking','days','target']){const bad=structuredClone(a);bad.habits[0][field]=field==='days'?[]:field==='target'?-1:'invalid';assert.throws(()=>validateBackup(bad));}
+});
+
+test('habit streak skips unscheduled days and allows today to remain open',async()=>{
+ const {habitStreak,habitDone}=await import('../dist/domain.js');const h={id:'h',createdDate:'2026-10-20',days:[0,1,2,3,4],tracking:'boolean',target:1};const entries=['2026-10-22','2026-10-23'].map(date=>({habitId:'h',date,value:1}));assert.equal(habitStreak(h,entries,'2026-10-26'),2);assert.equal(habitStreak(h,entries,'2026-10-27'),0);assert.equal(habitDone({...h,tracking:'measure',target:2},{value:1.5}),false);
+});

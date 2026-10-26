@@ -1,4 +1,4 @@
-# Team Progress · Version 0.3
+# Team Progress · Version 0.4
 
 Mobile Web-App, nach den Bildreferenzen gestaltet, für spätere Verpackung mit Capacitor vorbereitet. Der ursprüngliche V11-Split bleibt der unveränderte Startplan.
 
@@ -10,7 +10,7 @@ Node.js 22+ und Python 3, keine externen Laufzeitabhängigkeiten:
 npm run dev     # http://localhost:3000, statische Vorschau; Anmeldung benötigt Sites oder einen lokalen API-Testadapter
 npm run check
 npm run build   # Worker mit eingebetteten Assets nach build/server/index.js
-npm test        # 18 Logik-/API-Tests; Python/SQLite für API-Tests
+npm test        # 20 Logik-/API-Tests; Python/SQLite für API-Tests
 ```
 
 ## Funktionen
@@ -27,6 +27,9 @@ npm test        # 18 Logik-/API-Tests; Python/SQLite für API-Tests
 - Laufen und Mobility separat protokollieren: Dauer, Distanz, Laufart (frei/Zone 2/HIIT), Notizen, Pace. Keine automatisch ergänzten Mobility- oder Laufprogramme.
 - JSON-Sicherung/-Import mit Migration bestehender V1-Daten und Zusammenführung von Plänen, Einheiten, Aktivitäten und Kalender.
 - Anmeldung mit eigenem ChatGPT-Konto und automatischer Cloud-Abgleich. Auf weiteren Geräten dasselbe Konto und dieselbe App-Adresse verwenden.
+
+- Eigenständiger Habit-Bereich: Aufbauen/Abgewöhnen, Ja/Nein, Zähler, Messwerte, Farben und Icons, Kategorien, Wochentage, Serienziel, 26-Wochen-Raster, Fünf-Tage-Tabelle, Monatskalender, Notizen, Statistik, Archiv und Löschen. Keine automatische Verknüpfung mit Training.
+- Habits und Tageswerte werden im Konto synchronisiert und in JSON-Sicherungen aufgenommen. Tageswerte werden einzeln zusammengeführt. Erinnerung per Push ist nicht enthalten.
 
 ## Daten und Synchronisierung
 

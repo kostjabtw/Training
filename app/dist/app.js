@@ -1,5 +1,6 @@
 import { plan as seedPlan, exercises as seedExercises } from './plan.js';
 import { localDate, weekStart, weekDays, createSession, validSet, summary, previousSets, exerciseSeries, validateBackup } from './domain.js';
+import { createHabits } from './habits.js';
 import { createFeatures } from './features.js';
 import { snapshot, mergeStates } from './domain.js';
 import { createSync } from './sync.js';
@@ -25,7 +26,7 @@ const iconPaths = {
 };
 const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.dumbbell}</svg>`;
 let state=emptyState(), storageError=false, authenticated=false;
-let plan = [], exercises = [], features, sync;
+let plan = [], exercises = [], features, sync, habits;
 function refreshCatalog() {
   plan = state.plans.find(p=>p.id===state.activePlanId)?.workouts || seedPlan;
   exercises = [...new Map([...seedExercises,...state.plans.flatMap(p=>p.workouts.flatMap(w=>w.exercises)),...state.sessions.flatMap(s=>snapshot(s).exercises),...(state.active?snapshot(state.active).exercises:[])].map(e=>[e.id,e])).values()];
@@ -34,7 +35,7 @@ refreshCatalog();
 let view = 'home', selected = new Date(), statsTab = 'global', period = '3M', exerciseId = exercises[0].id, metric = 'weight';
 let toastTimer, dialogReturnFocus;
 const currentRest = () => state.active?.restSeconds ?? state.preferences.restSeconds;
-const navItems = [['home', 'home', 'Übersicht'], ['plan', 'grid', 'Mein Plan'], ['stats', 'chart', 'Fortschritt'], ['history', 'calendar', 'Verlauf'], ['settings', 'settings', 'Einstellungen']];
+const navItems = [['home', 'home', 'Übersicht'], ['plan', 'grid', 'Mein Plan'], ['stats', 'chart', 'Fortschritt'], ['history', 'calendar', 'Verlauf'], ['habits', 'leaf', 'Gewohnheiten'], ['settings', 'settings', 'Einstellungen']];
 function persist() {
   try { saveState(state); refreshCatalog(); sync?.schedule(); return true; } catch { toast('Speichern fehlgeschlagen. Bitte exportiere deine Daten als Sicherung.'); return false; }
 }
@@ -51,7 +52,7 @@ function render() {
   const training = view === 'workout' && state.active;
   $('#app').innerHTML = `<div class="app-shell ${training ? 'training-shell' : ''}">
     <aside class="sidebar"><a href="#" class="brand" data-action="nav" data-view="home"><span class="brand-mark">${icon('chart')}</span><span>TEAM<span class="brand-second">PROGRESS</span></span></a>
-      <div class="sidebar-label">DEIN TRAINING</div><nav aria-label="Hauptnavigation">${navItems.map(([v, i, label]) => `<button class="nav-item ${view === v ? 'active' : ''}" data-action="nav" data-view="${v}" ${view === v ? 'aria-current="page"' : ''}>${icon(i)}<span>${label}</span>${view === v ? '<span class="nav-dot"></span>' : ''}</button>`).join('')}</nav>
+      <div class="sidebar-label">DEINE BEREICHE</div><nav aria-label="Hauptnavigation">${navItems.map(([v, i, label]) => `<button class="nav-item ${view === v ? 'active' : ''}" data-action="nav" data-view="${v}" ${view === v ? 'aria-current="page"' : ''}>${icon(i)}<span>${label}</span>${view === v ? '<span class="nav-dot"></span>' : ''}</button>`).join('')}</nav>
       <div class="profile"><span class="avatar">${esc((state.preferences.name || 'Du').slice(0, 1).toUpperCase())}</span><div><strong>${esc(state.preferences.name || 'Dein Training')}</strong><span>Dein persönlicher Plan</span></div></div>
     </aside><main id="main" tabindex="-1">${training ? workoutView() : normalView()}</main>
     ${!training ? `<nav class="bottom-nav" aria-label="Mobile Navigation">${navItems.filter(([v])=>v!=='settings').map(([v, i, label]) => `<button data-action="nav" data-view="${v}" aria-label="${label}" ${view === v ? 'aria-current="page"' : ''} class="${view === v ? 'active' : ''}">${icon(i)}<span>${label === 'Einstellungen' ? 'Profil' : label === 'Mein Plan' ? 'Plan' : label === 'Übersicht' ? 'Heute' : label}</span></button>`).join('')}</nav>` : ''}
@@ -59,11 +60,11 @@ function render() {
   updateTimers();
 }
 function normalView() {
-  const titles = { home: `<span>Hey,</span> ${esc(state.preferences.name || 'du')}.`, plan: '<span>Dein</span> Plan.', stats: '<span>Dein</span> Fortschritt.', history: '<span>Dein</span> Verlauf.', settings: '<span>Ganz</span> du.' };
+  const titles = { home: `<span>Hey,</span> ${esc(state.preferences.name || 'du')}.`, plan: '<span>Dein</span> Plan.', stats: '<span>Dein</span> Fortschritt.', history: '<span>Dein</span> Verlauf.', habits: '<span>Deine</span> Gewohnheiten.', settings: '<span>Ganz</span> du.' };
   return `<header class="page-header"><div><div class="eyebrow">${view === 'home' ? dateLabel(new Date(), { weekday: 'long' }) : 'TEAM PROGRESS'}</div><h1>${titles[view]}</h1></div><button class="icon-button" data-action="nav" data-view="settings" aria-label="Einstellungen">${icon('settings')}</button></header><p class="cloud-status" data-cloud-status role="status">${esc(sync?.status()||'Cloud-Speicher wird verbunden …')}</p>
     ${storageError ? '<div class="notice">Deine gespeicherten Daten konnten nicht geladen werden. Sichere vorhandene Browserdaten, bevor du neue Trainings speicherst.</div>' : ''}
-    ${state.active && view !== 'settings' ? `<button class="resume-banner" data-action="resume"><span class="live-dot"></span>${esc(snapshot(state.active).name)} läuft · Training fortsetzen ${icon('arrow')}</button>` : ''}
-    ${{ home: homeView, plan: planView, stats: statsView, history: historyView, settings: settingsView }[view]?.() || homeView()}`;
+    ${state.active && !['settings','habits'].includes(view) ? `<button class="resume-banner" data-action="resume"><span class="live-dot"></span>${esc(snapshot(state.active).name)} läuft · Training fortsetzen ${icon('arrow')}</button>` : ''}
+    ${{ home: homeView, plan: planView, stats: statsView, history: historyView, settings: settingsView, habits: ()=>habits.render() }[view]?.() || homeView()}`;
 }
 function weekCalendar() {
   const days = weekDays(selected);
@@ -203,6 +204,7 @@ document.addEventListener('click', async event => {
   if(action==='legacy-import'){openDialog(`<h2>Bisherige lokale Daten übernehmen?</h2><p>Auf diesem Gerät sind Daten aus der bisherigen Version vorhanden. Übernimm sie nur, wenn sie dir gehören. Sie werden anschließend deinem angemeldeten Konto zugeordnet. Deine bisherigen Profileinstellungen werden ebenfalls übernommen.</p><button class="primary-button full-width" data-action="confirm-legacy">In mein Konto übernehmen</button>`);return;}
   if(action==='confirm-legacy'){try{const legacy=readLegacyState();state=mergeStates(state,{...legacy,prefsUpdatedAt:new Date().toISOString()});state.active||=legacy.active;if(persist()){claimLegacyState();closeDialog();render();}}catch(err){toast(err.message);}return;}
   const exercise = state.active?.exercises.find(e => e.id === exId);
+  if (await habits.handle(action, button)) return;
   if (await features.handle(action, button)) return;
   switch (action) {
     case 'nav': view = button.dataset.view; if ($('#dialog').open) closeDialog(); render(); window.scrollTo(0, 0); break;
@@ -267,6 +269,7 @@ document.addEventListener('input', event => {
 document.addEventListener('change', async event => {
   if(!authenticated)return;
   if(event.target.dataset.warmupKg || event.target.dataset.field==='kg') features.refreshWarmup(event.target);
+  habits.change(event.target);
   features.change(event.target);
   if (event.target.id === 'exercise-select') { exerciseId = event.target.value; render(); }
   if (event.target.id === 'import-file') {
@@ -280,6 +283,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) upda
 window.addEventListener('online', () => toast('Du bist wieder online.'));
 window.addEventListener('offline', () => toast('Offline. Du kannst dein geladenes Training weiter erfassen.'));
 features = createFeatures({ getState:()=>state, setState:s=>{state=s;}, getExercises:()=>exercises, getPlan:()=>plan, persist, render, openDialog, closeDialog, toast, esc, icon, number, dateLabel, routineCard, startWorkout, getSelected:()=>selected, setSelected:d=>{selected=d;}, getSync:()=>sync, getAccount:currentAccount, hasLegacyState });
+habits = createHabits({getState:()=>state,persist,render,openDialog,closeDialog,toast,esc,icon});
 function loginScreen(message='Melde dich an, um deine Trainings und Pläne in deinem eigenen Konto zu speichern.') {
   authenticated=false;sync?.stop();if($('#dialog').open)closeDialog();
   $('#app').innerHTML=`<section class="login-screen"><div class="brand-mark">${icon('chart')}</div><div class="eyebrow">TEAM PROGRESS</div><h1>Dein Trainingskonto</h1><p>${esc(message)}</p><a class="primary-button full-width" href="/signin-with-chatgpt?return_to=%2F" target="_top">Mit ChatGPT anmelden</a><p class="login-detail">Jede Person nutzt ihr eigenes Konto. Trainingsdaten sind nur für die angemeldete Person verfügbar.</p><button class="text-button" data-action="retry-account">Erneut prüfen</button></section>`;
