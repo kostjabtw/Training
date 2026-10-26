@@ -1,33 +1,38 @@
 import { validateBackup, mergeStates } from './domain.js';
+import { currentAccount } from './account.js';
 export function createSync(c) {
- let on=false, running=false, timer, message='Ausgeschaltet. Deine Daten werden lokal gespeichert.';
- try {on=localStorage.getItem('team-progress:sync')==='on';}catch{}
+ let stopped=false,running=false,timer,interval,controller,message='Cloud-Speicher wird verbunden …',dirty=false;
  const update=s=>{message=s;c.onStatus?.();};
+ function stop(){stopped=true;clearTimeout(timer);clearInterval(interval);controller?.abort();}
+ function authLost(){stop();c.onAuthLost?.();}
  async function run(){
-  if(!on||running)return;
-  if(!navigator.onLine){update('Offline. Änderungen werden beim nächsten Abgleich übertragen.');return;}
-  running=true;update('Daten werden abgeglichen …');
+  if(stopped||running||!currentAccount())return false;
+  if(!navigator.onLine){update('Offline · Änderungen bleiben auf diesem Gerät und werden später hochgeladen.');return false;}
+  running=true;controller=new AbortController();update('Wird in der Cloud gespeichert …');
+  const userId=currentAccount().id;
   try{
    for(let attempt=0;attempt<3;attempt++){
-    const response=await fetch('./api/sync',{headers:{Accept:'application/json'},cache:'no-store'});
-    if(response.status===401){update('Bitte mit deinem ChatGPT-Konto anmelden.');return;}
-    if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw new Error('Cloud-Abgleich derzeit nicht erreichbar. Deine Daten bleiben lokal erhalten.');
-    const remote=await response.json(), original=JSON.stringify(c.getState());
+    const response=await fetch('./api/sync',{headers:{Accept:'application/json'},cache:'no-store',signal:controller.signal});
+    if(response.status===401){authLost();return false;}
+    if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw new Error('Cloud derzeit nicht erreichbar · Änderungen bleiben auf diesem Gerät.');
+    const remote=await response.json();
+    if(remote.userId!==userId||currentAccount()?.id!==userId){authLost();return false;}
+    const original=JSON.stringify(c.getState());
     const merged=remote.data?mergeStates(c.getState(),validateBackup(remote.data)):c.getState();
-    const data={...merged,active:null};
-    const result=await fetch('./api/sync',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:remote.revision,data})});
-    if(result.status===409)continue;
-    if(!result.ok)throw new Error('Cloud-Abgleich fehlgeschlagen. Deine Daten bleiben lokal erhalten.');
-    if(JSON.stringify(c.getState())===original){c.save(merged);c.setState(merged);if(!c.isBusy())c.render();}
+    const result=await fetch('./api/sync',{method:'PUT',signal:controller.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,revision:remote.revision,data:{...merged,active:null}})});
+    if(result.status===401){authLost();return false;}
+    if(result.status===409){const error=await result.json();if(error.error==='account_changed'){authLost();return false;}continue;}
+    if(!result.ok)throw new Error('Cloud-Speichern fehlgeschlagen · Änderungen bleiben auf diesem Gerät.');
+    if(stopped||currentAccount()?.id!==userId)return false;
+    if(JSON.stringify(c.getState())===original){c.save(merged);c.setState(merged);dirty=false;if(!c.isBusy())c.render();update('In der Cloud gespeichert · '+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}));}
     else schedule();
-    update('Synchronisiert · '+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}));return;
+    return true;
    }
-   update('Parallel auf einem anderen Gerät geändert. Bitte erneut abgleichen.');
-  }catch(error){update(error.message||'Abgleich fehlgeschlagen. Lokale Daten bleiben erhalten.');}
+   update('Parallel geändert · Der nächste Abgleich erfolgt automatisch.');return false;
+  }catch(error){if(!stopped)update(error.message||'Cloud-Speichern fehlgeschlagen.');return false;}
   finally{running=false;}
  }
- function schedule(){if(on){clearTimeout(timer);timer=setTimeout(run,1500);}}
- function toggle(){on=!on;try{localStorage.setItem('team-progress:sync',on?'on':'off');}catch{}if(on)run();else{clearTimeout(timer);update('Ausgeschaltet. Deine Daten werden lokal gespeichert.');}}
- function start(){if(on)run();window.addEventListener('online',schedule);document.addEventListener('visibilitychange',()=>{if(!document.hidden)schedule();});setInterval(()=>{if(on&&!document.hidden)run();},60000);}
- return{start,run,schedule,toggle,enabled:()=>on,status:()=>message};
+ function schedule(){if(!stopped){dirty=true;update(navigator.onLine?'Auf diesem Gerät gespeichert · Cloud-Abgleich ausstehend …':'Offline · Änderungen bleiben auf diesem Gerät.');clearTimeout(timer);timer=setTimeout(run,1200);}}
+ function start(){run();window.addEventListener('online',schedule);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!stopped)run();});interval=setInterval(()=>{if(!document.hidden)run();},30000);}
+ return{start,run,schedule,stop,enabled:()=>!stopped,status:()=>message,pending:()=>dirty};
 }

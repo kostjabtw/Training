@@ -3,7 +3,8 @@ import { localDate, weekStart, weekDays, createSession, validSet, summary, previ
 import { createFeatures } from './features.js';
 import { snapshot, mergeStates } from './domain.js';
 import { createSync } from './sync.js';
-import { loadState, saveState, emptyState, exportState } from './storage.js';
+import { resolveAccount, currentAccount, forgetAccount, accountStorageKey } from './account.js';
+import { loadState, saveState, emptyState, exportState, hasLegacyState, readLegacyState, claimLegacyState } from './storage.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -23,8 +24,7 @@ const iconPaths = {
  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>', play: '<path d="m8 4 12 8-12 8z"/>', trash: '<path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>', leaf: '<path d="M20 3C7 2 2 9 5 16s16 3 15-13ZM4 21 15 9"/>'
 };
 const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name] || iconPaths.dumbbell}</svg>`;
-let state, storageError = false;
-try { state = loadState(); } catch { state = emptyState(); storageError = true; }
+let state=emptyState(), storageError=false, authenticated=false;
 let plan = [], exercises = [], features, sync;
 function refreshCatalog() {
   plan = state.plans.find(p=>p.id===state.activePlanId)?.workouts || seedPlan;
@@ -45,6 +45,7 @@ function applyTheme() {
   $('meta[name="theme-color"]').content = document.documentElement.dataset.theme === 'dark' ? '#151615' : '#f8f8f6';
 }
 function render() {
+  if(!authenticated)return;
   refreshCatalog();
   applyTheme();
   const training = view === 'workout' && state.active;
@@ -59,7 +60,7 @@ function render() {
 }
 function normalView() {
   const titles = { home: `<span>Hey,</span> ${esc(state.preferences.name || 'du')}.`, plan: '<span>Dein</span> Plan.', stats: '<span>Dein</span> Fortschritt.', history: '<span>Dein</span> Verlauf.', settings: '<span>Ganz</span> du.' };
-  return `<header class="page-header"><div><div class="eyebrow">${view === 'home' ? dateLabel(new Date(), { weekday: 'long' }) : 'TEAM PROGRESS'}</div><h1>${titles[view]}</h1></div><button class="icon-button" data-action="nav" data-view="settings" aria-label="Einstellungen">${icon('settings')}</button></header>
+  return `<header class="page-header"><div><div class="eyebrow">${view === 'home' ? dateLabel(new Date(), { weekday: 'long' }) : 'TEAM PROGRESS'}</div><h1>${titles[view]}</h1></div><button class="icon-button" data-action="nav" data-view="settings" aria-label="Einstellungen">${icon('settings')}</button></header><p class="cloud-status" data-cloud-status role="status">${esc(sync?.status()||'Cloud-Speicher wird verbunden …')}</p>
     ${storageError ? '<div class="notice">Deine gespeicherten Daten konnten nicht geladen werden. Sichere vorhandene Browserdaten, bevor du neue Trainings speicherst.</div>' : ''}
     ${state.active && view !== 'settings' ? `<button class="resume-banner" data-action="resume"><span class="live-dot"></span>${esc(snapshot(state.active).name)} läuft · Training fortsetzen ${icon('arrow')}</button>` : ''}
     ${{ home: homeView, plan: planView, stats: statsView, history: historyView, settings: settingsView }[view]?.() || homeView()}`;
@@ -132,7 +133,7 @@ function historyView() {
 }
 function settingsView() {
   return `${features.syncView()}<div class="settings-grid"><section class="settings-card"><div class="eyebrow">PERSÖNLICH</div><h2>Dein Profil</h2><label for="profile-name">Wie dürfen wir dich nennen?</label><input id="profile-name" type="text" autocomplete="given-name" maxlength="40" placeholder="Dein Vorname" value="${esc(state.preferences.name)}"><label for="theme-select">Darstellung</label><select id="theme-select">${[['light', 'Hell'], ['dark', 'Dunkel'], ['system', 'Wie dein Gerät']].map(([v, l]) => `<option value="${v}" ${v === state.preferences.theme ? 'selected' : ''}>${l}</option>`).join('')}</select><label for="rest-select">Standard-Pausentimer</label><select id="rest-select">${[60, 90, 120, 180, 240, 300].map(v => `<option value="${v}" ${v === state.preferences.restSeconds ? 'selected' : ''}>${v / 60} Minuten</option>`).join('')}</select><button class="primary-button" data-action="save-settings">Einstellungen speichern ${icon('check')}</button></section>
-  <section class="settings-card"><div class="eyebrow">DEINE DATEN BLEIBEN BEI DIR</div><h2>Sichern & übertragen</h2><p>Deine Trainings werden in diesem Browser auf diesem Gerät gespeichert. Sichere sie regelmäßig als Datei. Aktiviere die Synchronisierung oben, um deine Daten zwischen Geräten zu übertragen.</p><button class="secondary-button full-width" data-action="export">${icon('download')} Daten exportieren</button><button class="secondary-button full-width" data-action="import">${icon('plus')} Sicherung importieren</button><input id="import-file" type="file" accept="application/json,.json" hidden><div class="settings-divider"></div><h3>Auf deinem Startbildschirm</h3><p>Öffne die App auf dem iPhone in Safari. Tippe auf „Teilen“ und dann „Zum Home-Bildschirm“. Nach dem ersten vollständigen Laden kann die App bei erfolgreicher Offline-Einrichtung auch ohne Netz geöffnet werden.</p><span class="offline-state" id="offline-status">Offline-Einrichtung wird geprüft …</span></section></div>`;
+  <section class="settings-card"><div class="eyebrow">DEINE DATEN BLEIBEN BEI DIR</div><h2>Sichern & übertragen</h2><p>Abgeschlossene Trainings, Pläne und Aktivitäten werden automatisch in deinem Konto gespeichert. Eine lokale Kopie ermöglicht die Nutzung ohne Netz. Du kannst zusätzlich eine Sicherungsdatei exportieren.</p><button class="secondary-button full-width" data-action="export">${icon('download')} Daten exportieren</button><button class="secondary-button full-width" data-action="import">${icon('plus')} Sicherung importieren</button><input id="import-file" type="file" accept="application/json,.json" hidden><div class="settings-divider"></div><h3>Auf deinem Startbildschirm</h3><p>Öffne die App auf dem iPhone in Safari. Tippe auf „Teilen“ und dann „Zum Home-Bildschirm“. Nach dem ersten vollständigen Laden kann die App bei erfolgreicher Offline-Einrichtung auch ohne Netz geöffnet werden.</p><span class="offline-state" id="offline-status">Offline-Einrichtung wird geprüft …</span></section></div>`;
 }
 function openDialog(content, label = 'Details') {
   dialogReturnFocus = document.activeElement;
@@ -196,6 +197,11 @@ let offlineStatus = 'Offline-Einrichtung wird geprüft …';
 document.addEventListener('click', async event => {
   const button = event.target.closest('[data-action]'); if (!button) return;
   event.preventDefault(); const action = button.dataset.action, id = button.dataset.id, exId = button.dataset.ex, index = Number(button.dataset.set);
+  if(action==='retry-account'){await boot();return;}
+  if(!authenticated)return;
+  if(action==='logout'){openDialog(`<h2>Abmelden?</h2><p>Cloud-Daten bleiben in deinem Konto. Noch nicht übertragene Änderungen bleiben auf diesem Gerät und werden nach deiner nächsten Anmeldung abgeglichen.</p><a href="/signout-with-chatgpt?return_to=%2F" target="_top" class="primary-button full-width" data-logout-link>Abmelden</a>`);return;}
+  if(action==='legacy-import'){openDialog(`<h2>Bisherige lokale Daten übernehmen?</h2><p>Auf diesem Gerät sind Daten aus der bisherigen Version vorhanden. Übernimm sie nur, wenn sie dir gehören. Sie werden anschließend deinem angemeldeten Konto zugeordnet. Deine bisherigen Profileinstellungen werden ebenfalls übernommen.</p><button class="primary-button full-width" data-action="confirm-legacy">In mein Konto übernehmen</button>`);return;}
+  if(action==='confirm-legacy'){try{const legacy=readLegacyState();state=mergeStates(state,{...legacy,prefsUpdatedAt:new Date().toISOString()});state.active||=legacy.active;if(persist()){claimLegacyState();closeDialog();render();}}catch(err){toast(err.message);}return;}
   const exercise = state.active?.exercises.find(e => e.id === exId);
   if (await features.handle(action, button)) return;
   switch (action) {
@@ -253,11 +259,13 @@ document.addEventListener('input', event => {
   const el = event.target;
   if(el.dataset.warmupKg){const ex=state.active.exercises.find(x=>x.id===el.dataset.warmupKg);ex.warmupKg=el.value;}
 
+  if(!authenticated)return;
   features.input(el);
   if (el.dataset.field && state.active) { const set = state.active.exercises.find(e => e.id === el.dataset.ex)?.sets[Number(el.dataset.set)]; if (set && !set.done) { set[el.dataset.field] = el.value; persist(); if(el.dataset.field==='reps' && el.value!==''){const warm=el.closest('.exercise-card')?.querySelector('.warmup');if(warm)warm.open=false;} } }
   if (el.dataset.note && state.active) { state.active.exercises.find(e => e.id === el.dataset.note).note = el.value; persist(); }
 });
 document.addEventListener('change', async event => {
+  if(!authenticated)return;
   if(event.target.dataset.warmupKg || event.target.dataset.field==='kg') features.refreshWarmup(event.target);
   features.change(event.target);
   if (event.target.id === 'exercise-select') { exerciseId = event.target.value; render(); }
@@ -271,10 +279,25 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if
 document.addEventListener('visibilitychange', () => { if (!document.hidden) updateTimers(); });
 window.addEventListener('online', () => toast('Du bist wieder online.'));
 window.addEventListener('offline', () => toast('Offline. Du kannst dein geladenes Training weiter erfassen.'));
-features = createFeatures({ getState:()=>state, setState:s=>{state=s;}, getExercises:()=>exercises, getPlan:()=>plan, persist, render, openDialog, closeDialog, toast, esc, icon, number, dateLabel, routineCard, startWorkout, getSelected:()=>selected, setSelected:d=>{selected=d;}, getSync:()=>sync });
-sync=createSync({ getState:()=>state, setState:s=>{state=s;refreshCatalog();}, save:saveState, render, isBusy:()=>view==='workout'||$('#dialog').open, onStatus:()=>{const el=$('#sync-status');if(el)el.textContent=sync.status();} });
-render();
-sync.start();
+features = createFeatures({ getState:()=>state, setState:s=>{state=s;}, getExercises:()=>exercises, getPlan:()=>plan, persist, render, openDialog, closeDialog, toast, esc, icon, number, dateLabel, routineCard, startWorkout, getSelected:()=>selected, setSelected:d=>{selected=d;}, getSync:()=>sync, getAccount:currentAccount, hasLegacyState });
+function loginScreen(message='Melde dich an, um deine Trainings und Pläne in deinem eigenen Konto zu speichern.') {
+  authenticated=false;sync?.stop();if($('#dialog').open)closeDialog();
+  $('#app').innerHTML=`<section class="login-screen"><div class="brand-mark">${icon('chart')}</div><div class="eyebrow">TEAM PROGRESS</div><h1>Dein Trainingskonto</h1><p>${esc(message)}</p><a class="primary-button full-width" href="/signin-with-chatgpt?return_to=%2F" target="_top">Mit ChatGPT anmelden</a><p class="login-detail">Jede Person nutzt ihr eigenes Konto. Trainingsdaten sind nur für die angemeldete Person verfügbar.</p><button class="text-button" data-action="retry-account">Erneut prüfen</button></section>`;
+}
+function authLost(){forgetAccount();state=emptyState();loginScreen('Deine Anmeldung hat sich geändert. Bitte melde dich erneut an.');}
+async function boot(){
+  authenticated=false;sync?.stop();$('#app').innerHTML='<div class="login-screen" role="status">Anmeldung wird geprüft …</div>';
+  try{
+    const result=await resolveAccount();if(!result.account){loginScreen(result.offline?'Bitte melde dich zunächst mit Internetverbindung an.':undefined);return;}
+    try{state=loadState();storageError=false;}catch{state=emptyState();storageError=true;}
+    refreshCatalog();authenticated=true;
+    sync=createSync({getState:()=>state,setState:s=>{state=s;refreshCatalog();},save:saveState,render,isBusy:()=>view==='workout'||$('#dialog').open,onAuthLost:authLost,onStatus:()=>{document.querySelectorAll('#sync-status,[data-cloud-status]').forEach(el=>el.textContent=sync.status());}});
+    render();sync.start();
+  }catch(err){loginScreen(err.message||'Anmeldung derzeit nicht erreichbar. Bitte erneut versuchen.');}
+}
+document.addEventListener('click',event=>{if(event.target.closest('[data-logout-link]')){sync?.stop();forgetAccount();state=emptyState();loginScreen('Du bist abgemeldet.');}});
+window.addEventListener('storage',event=>{if(event.key===accountStorageKey){let next;try{next=JSON.parse(event.newValue||'null');}catch{}if(next?.id!==currentAccount()?.id){sync?.stop();state=emptyState();loginScreen('Das Konto wurde in einem anderen Fenster gewechselt. Bitte erneut anmelden.');}}});
+boot();
 setInterval(updateTimers, 1000);
 if ('serviceWorker' in navigator && ['http:', 'https:'].includes(location.protocol)) {
   navigator.serviceWorker.register('./sw.js').then(async registration => {
