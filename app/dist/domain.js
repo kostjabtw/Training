@@ -93,10 +93,10 @@ export function validateBackup(data) {
       const sets=e.sets.map(v=>{
         if(!v||typeof v.done!=='boolean'||!['string','number'].includes(typeof v.reps)||!['string','number'].includes(typeof v.kg))fail();
         if(v.done?!validSet(v):!((v.reps===''||(Number.isInteger(Number(v.reps))&&Number(v.reps)>=0&&Number(v.reps)<=1000))&&(v.kg===''||(Number.isFinite(Number(v.kg))&&Number(v.kg)>=0&&Number(v.kg)<=2000))))fail();
-        return {reps:v.reps,kg:v.kg,done:v.done};
+        return {reps:v.reps,kg:v.kg,done:v.done,note:text(v.note,1000)?v.note:''};
       });return{id:e.id,note:e.note,sets,...(e.warmupKg!==undefined && Number.isFinite(Number(e.warmupKg)) && Number(e.warmupKg)>=0 && Number(e.warmupKg)<=2000?{warmupKg:e.warmupKg}:{})};
     });
-    return {id:s.id,workoutId:w.id,workout:w,startedAt:s.startedAt,date:s.date,updatedAt:date(s.updatedAt)?s.updatedAt:(s.finishedAt||s.startedAt),...(active?{restOverride:s.restOverride===true,restSeconds:Number.isInteger(s.restSeconds)&&s.restSeconds>=1&&s.restSeconds<=1800?s.restSeconds:undefined,restUntil:Number.isFinite(s.restUntil)&&s.restUntil>0?s.restUntil:null,warmups:array(s.warmups,100)?s.warmups.filter(v=>text(v)):[]}:{finishedAt:s.finishedAt}),exercises};
+    return {note:text(s.note,3000)?s.note:'',id:s.id,workoutId:w.id,workout:w,startedAt:s.startedAt,date:s.date,updatedAt:date(s.updatedAt)?s.updatedAt:(s.finishedAt||s.startedAt),...(active?{restOverride:s.restOverride===true,restSeconds:Number.isInteger(s.restSeconds)&&s.restSeconds>=1&&s.restSeconds<=1800?s.restSeconds:undefined,restUntil:Number.isFinite(s.restUntil)&&s.restUntil>0?s.restUntil:null,warmups:array(s.warmups,100)?s.warmups.filter(v=>text(v)):[]}:{finishedAt:s.finishedAt}),exercises};
   };
   const sessions=data.sessions.map(s=>validateSession(s));if(!unique(sessions))fail();
   const schedule=(data.schedule||[]);if(!array(schedule)||!unique(schedule))fail();
@@ -114,7 +114,15 @@ export function validateBackup(data) {
   const entryKeys=new Set();
   const cleanHabitEntries=habitEntries.map(e=>{const key=e.habitId+'-'+e.date;if(!id(e.id)||e.id!==key||!id(e.habitId)||!day(e.date)||!Number.isFinite(e.value)||e.value<0||e.value>1000000||!text(e.note,2000)||!date(e.updatedAt)||entryKeys.has(key))fail();entryKeys.add(key);return{id:e.id,habitId:e.habitId,date:e.date,value:e.value,note:e.note,updatedAt:e.updatedAt};});
   const preferences=data.preferences||{};
-  return {version:2,habits:cleanHabits,habitEntries:cleanHabitEntries,sessions,active:data.active?validateSession(data.active,true):null,plans:cleanPlans,activePlanId:cleanPlans.some(p=>p.id===data.activePlanId)?data.activePlanId:cleanPlans[0].id,schedule:cleanSchedule,activities:cleanActivities,deleted,prefsUpdatedAt:date(data.prefsUpdatedAt)?data.prefsUpdatedAt:(data.version===1?new Date().toISOString():'1970-01-01T00:00:00.000Z'),preferences:{name:text(preferences.name,40)?preferences.name:'',theme:['light','dark','system'].includes(preferences.theme)?preferences.theme:'light',restSeconds:[60,90,120,180,240,300].includes(Number(preferences.restSeconds))?Number(preferences.restSeconds):120}};
+  const goals=data.goals||[], measurements=data.measurements||[];
+  if(!array(goals,200)||!unique(goals)||!array(measurements,10000)||!unique(measurements))fail();
+  const cleanGoals=goals.map(g=>{if(!id(g.id)||!date(g.updatedAt)||!text(g.name)||!['frequency','strength','weight','waist'].includes(g.kind)||!id(g.exerciseId)||![g.start,g.current,g.target].every(v=>Number.isFinite(v)&&v>=0&&v<=2000)||g.target<=0)fail();return {id:g.id,name:g.name,kind:g.kind,exerciseId:g.exerciseId,start:g.start,current:g.current,target:g.target,updatedAt:g.updatedAt};});
+  const cleanMeasurements=measurements.map(m=>{if(!id(m.id)||!date(m.updatedAt)||!day(m.date)||!['weight','waist'].includes(m.kind)||!Number.isFinite(m.value)||m.value<=0||m.value>1000)fail();return {id:m.id,kind:m.kind,date:m.date,value:m.value,updatedAt:m.updatedAt};});
+  const cp=preferences.coaching;
+  const coaching=cp&&['fitness','muscle','strength'].includes(cp.goal)&&['new','experienced'].includes(cp.level)&&['gym','home'].includes(cp.equipment)&&Number.isInteger(cp.days)&&cp.days>=1&&cp.days<=5?{goal:cp.goal,level:cp.level,equipment:cp.equipment,days:cp.days}:null;
+  const rp=preferences.reminders, time=v=>typeof v==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+  const reminders=rp&&time(rp.training)&&time(rp.habits)?{enabled:rp.enabled===true,training:rp.training,habits:rp.habits}:null;
+  return {version:2,goals:cleanGoals,measurements:cleanMeasurements,habits:cleanHabits,habitEntries:cleanHabitEntries,sessions,active:data.active?validateSession(data.active,true):null,plans:cleanPlans,activePlanId:cleanPlans.some(p=>p.id===data.activePlanId)?data.activePlanId:cleanPlans[0].id,schedule:cleanSchedule,activities:cleanActivities,deleted,prefsUpdatedAt:date(data.prefsUpdatedAt)?data.prefsUpdatedAt:(data.version===1?new Date().toISOString():'1970-01-01T00:00:00.000Z'),preferences:{coaching,reminders,achievements:preferences.achievements!==false,name:text(preferences.name,40)?preferences.name:'',theme:['light','dark','system'].includes(preferences.theme)?preferences.theme:'light',restSeconds:[60,90,120,180,240,300].includes(Number(preferences.restSeconds))?Number(preferences.restSeconds):120}};
 }
 export function mergeStates(local, remote) {
   const deleted={...local.deleted};
@@ -129,7 +137,7 @@ export function mergeStates(local, remote) {
   };
   const prefs=(remote.prefsUpdatedAt||'')>(local.prefsUpdatedAt||'')?remote:local;
   const plans=merge('plans');
-  return {...local,habits:merge('habits'),habitEntries:merge('habitEntries'),plans:plans.length?plans:initialPlans(),sessions:merge('sessions'),schedule:merge('schedule'),activities:merge('activities'),deleted,preferences:prefs.preferences,prefsUpdatedAt:prefs.prefsUpdatedAt,activePlanId:plans.some(p=>p.id===prefs.activePlanId)?prefs.activePlanId:plans[0]?.id||'base-v11'};
+  return {...local,goals:merge('goals'),measurements:merge('measurements'),habits:merge('habits'),habitEntries:merge('habitEntries'),plans:plans.length?plans:initialPlans(),sessions:merge('sessions'),schedule:merge('schedule'),activities:merge('activities'),deleted,preferences:prefs.preferences,prefsUpdatedAt:prefs.prefsUpdatedAt,activePlanId:plans.some(p=>p.id===prefs.activePlanId)?prefs.activePlanId:plans[0]?.id||'base-v11'};
 }
 
 export function habitEntry(state,habitId,date){return (state.habitEntries||[]).find(e=>e.habitId===habitId&&e.date===date);}

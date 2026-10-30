@@ -1,5 +1,5 @@
-const CACHE = 'team-progress-shell-v7';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './features.js', './habits.js', './sync.js', './account.js', './supabase-client.js', './plan.js', './domain.js', './storage.js', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
+const CACHE = 'team-progress-shell-v8';
+const ASSETS = ['./', './index.html', './styles.css', './app.js', './coaching.js', './features.js', './habits.js', './sync.js', './account.js', './supabase-client.js', './plan.js', './domain.js', './storage.js', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(async cache => {
     // Do not cache an authentication redirect as the application shell.

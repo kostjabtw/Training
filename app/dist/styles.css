@@ -28,3 +28,18 @@
 #auth-form{display:grid;gap:18px;width:100%;text-align:left}#auth-form label{display:grid;gap:8px;font-size:13px}#auth-form label[hidden]{display:none}#auth-form input{width:100%}#auth-error{font-size:13px;color:var(--accent)}.auth-options{display:grid;gap:4px;margin-top:22px}
 .today-habits{margin:34px 0}.today-habit-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.today-habit,.today-habit-empty{display:flex;align-items:center;gap:12px;text-align:left;padding:15px;border:1px solid var(--line);border-radius:18px;background:var(--card);color:var(--ink);min-width:0}.today-habit.completed{border-color:var(--green)}.today-habit-icon{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--habit-color) 15%,var(--card));color:var(--habit-color);flex-shrink:0}.today-habit-icon .icon{width:19px}.today-habit:not(.completed) .today-habit-icon .icon{opacity:.35}.today-habit>span:nth-child(2){min-width:0;flex:1}.today-habit strong,.today-habit small{display:block;overflow-wrap:anywhere}.today-habit strong{font-size:14px}.today-habit small{font-size:11px;color:var(--muted);margin-top:4px}.today-habit-arrow .icon{width:17px;color:var(--muted)}.today-habit-empty{width:100%;justify-content:space-between;color:var(--muted)}.auth-confirmed{text-align:center}.auth-confirmed .brand-mark{margin:0 auto 24px}.auth-confirmed .primary-button{margin-top:18px}
 @media(max-width:700px){.today-habit-list{grid-template-columns:1fr}.today-habits{margin:26px 0}.today-habit{padding:13px}}
+
+.coach-actions { display:flex; flex-wrap:wrap; gap:12px; margin:20px 0; }
+.coach-suggestion { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px; border:1px solid #8884; border-radius:18px; margin:12px 0; }
+.coach-suggestion small { display:block; max-width:55ch; opacity:.7; margin-top:6px; }
+.coach-set-note { display:block; font-size:12px; opacity:.8; margin:0 0 12px; }
+.coach-set-note input { margin-top:4px; width:100%; }
+.coach-bar { display:grid; grid-template-columns:minmax(100px,1fr) 1fr 30px; align-items:center; gap:12px; margin:16px 0; }
+.coach-bar meter { width:100%; }
+.coach-goals article { border-bottom:1px solid #8884; padding:16px 0; }
+form[id^="coach-"] { display:grid; gap:16px; margin:24px 0; }
+#print-report { display:none; }
+@media(max-width:600px) { .coach-suggestion { align-items:stretch; flex-direction:column; } .coach-bar {font-size:12px;} }
+@media print { body>* {display:none!important;} #print-report {display:block!important;color:#000;background:white;} #print-report article {break-inside:avoid;} }
+.coach-bar meter::-webkit-meter-optimum-value { background:currentColor; }
+.chart-card > small {display:block; margin:16px 0; line-height:1.6;}

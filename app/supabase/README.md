@@ -32,3 +32,25 @@ Der Publishable Key ist für den Browser vorgesehen und ersetzt keine Zugriffsre
 Die 20 bestehenden Logik-/API-Tests bestehen. Zusätzlich wurden im mobilen Browser mit simulierten Supabase-Antworten Login, Logout, Kontentrennung, RPC-Speicherung, Registrierung, Link-Anforderung, Reset-Anforderung und das Formular zur Passwortänderung geprüft. Echte Mailzustellung, vollständiger E-Mail-Rücksprung, Token-Erneuerung und Datenbank-Zugriffsregeln mit echten Konten sind noch nicht Ende-zu-Ende geprüft.
 
 Supabase-Konsole: Authentication → URL Configuration für Site URL/Redirect URLs, Authentication → Email/SMTP für eigenen Versand. Erst nach dessen Einrichtung und Nutzereinwilligung echte Testmails auslösen.
+
+## Coaching additions
+
+Personal setup with plan preview, optional load suggestions, goals, body measurements,
+per-set/session notes, muscle-group set distribution, optional milestones, CSV and
+printable PDF reports, and revocation of other sessions are in `dist/coaching.js`.
+Goals/measurements merge by ID/update time. Existing backups remain readable.
+Running workouts and their notes remain local until completed, as before.
+
+Run `002_delete_account.sql` in the Supabase SQL editor to enable account deletion.
+The function takes no user ID and deletes only `auth.uid()`; related progress is removed
+by the existing foreign key cascade. The UI requires typing LÖSCHEN. No account was
+deleted during development. Revoked access tokens can remain valid until expiry.
+
+Reminders currently run only while the app is open, in the device's local time.
+Closed-app Web Push needs a subscription store, scheduled sender and VAPID secrets;
+these services are not configured by this change. Permission requires an explicit tap.
+
+Validation: `npm run check`, `npm run build`, `npm run test:coaching`, existing domain
+suite. Mobile Chromium smoke test uses a mock account and local storage; it does not
+claim a live Supabase end-to-end test. The existing upgrade suite stalls in this
+environment and was terminated after 30 seconds.

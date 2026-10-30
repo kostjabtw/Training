@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "python3 -m http.server 3000 --directory dist",
     "test": "node tests/domain.test.js && node tests/upgrade.test.js",
-    "check": "node --check dist/habits.js && node --check dist/account.js && node --check dist/app.js && node --check dist/domain.js && node --check dist/storage.js && node --check dist/sw.js && node --check dist/features.js && node --check dist/sync.js",
+    "check": "node --check dist/coaching.js && node --check dist/habits.js && node --check dist/account.js && node --check dist/app.js && node --check dist/domain.js && node --check dist/storage.js && node --check dist/sw.js && node --check dist/features.js && node --check dist/sync.js",
     "build": "node scripts/build.mjs",
-    "bundle:auth": "esbuild src/supabase-client.js --bundle --format=esm --platform=browser --outfile=dist/supabase-client.js --minify"
+    "bundle:auth": "esbuild src/supabase-client.js --bundle --format=esm --platform=browser --outfile=dist/supabase-client.js --minify",
+    "test:coaching": "node tests/coaching.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0"
