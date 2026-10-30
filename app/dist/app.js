@@ -4,7 +4,7 @@ import { createHabits } from './habits.js';
 import { createFeatures } from './features.js';
 import { snapshot, mergeStates } from './domain.js';
 import { createSync } from './sync.js';
-import { resolveAccount, currentAccount, forgetAccount, accountStorageKey } from './account.js';
+import { resolveAccount, authenticate, signOut, recoveryRequired, currentAccount, forgetAccount, accountStorageKey } from './account.js';
 import { loadState, saveState, emptyState, exportState, hasLegacyState, readLegacyState, claimLegacyState } from './storage.js';
 
 const $ = s => document.querySelector(s);
@@ -200,7 +200,7 @@ document.addEventListener('click', async event => {
   event.preventDefault(); const action = button.dataset.action, id = button.dataset.id, exId = button.dataset.ex, index = Number(button.dataset.set);
   if(action==='retry-account'){await boot();return;}
   if(!authenticated)return;
-  if(action==='logout'){openDialog(`<h2>Abmelden?</h2><p>Cloud-Daten bleiben in deinem Konto. Noch nicht übertragene Änderungen bleiben auf diesem Gerät und werden nach deiner nächsten Anmeldung abgeglichen.</p><a href="/signout-with-chatgpt?return_to=%2F" target="_top" class="primary-button full-width" data-logout-link>Abmelden</a>`);return;}
+  if(action==='logout'){openDialog(`<h2>Abmelden?</h2><p>Cloud-Daten bleiben in deinem Konto. Noch nicht übertragene Änderungen bleiben auf diesem Gerät und werden nach deiner nächsten Anmeldung abgeglichen.</p><button class="primary-button full-width" data-logout-link>Abmelden</button>`);return;}
   if(action==='legacy-import'){openDialog(`<h2>Bisherige lokale Daten übernehmen?</h2><p>Auf diesem Gerät sind Daten aus der bisherigen Version vorhanden. Übernimm sie nur, wenn sie dir gehören. Sie werden anschließend deinem angemeldeten Konto zugeordnet. Deine bisherigen Profileinstellungen werden ebenfalls übernommen.</p><button class="primary-button full-width" data-action="confirm-legacy">In mein Konto übernehmen</button>`);return;}
   if(action==='confirm-legacy'){try{const legacy=readLegacyState();state=mergeStates(state,{...legacy,prefsUpdatedAt:new Date().toISOString()});state.active||=legacy.active;if(persist()){claimLegacyState();closeDialog();render();}}catch(err){toast(err.message);}return;}
   const exercise = state.active?.exercises.find(e => e.id === exId);
@@ -284,22 +284,32 @@ window.addEventListener('online', () => toast('Du bist wieder online.'));
 window.addEventListener('offline', () => toast('Offline. Du kannst dein geladenes Training weiter erfassen.'));
 features = createFeatures({ getState:()=>state, setState:s=>{state=s;}, getExercises:()=>exercises, getPlan:()=>plan, persist, render, openDialog, closeDialog, toast, esc, icon, number, dateLabel, routineCard, startWorkout, getSelected:()=>selected, setSelected:d=>{selected=d;}, getSync:()=>sync, getAccount:currentAccount, hasLegacyState });
 habits = createHabits({getState:()=>state,persist,render,openDialog,closeDialog,toast,esc,icon});
-function loginScreen(message='Melde dich an, um deine Trainings und Pläne in deinem eigenen Konto zu speichern.') {
-  authenticated=false;sync?.stop();if($('#dialog').open)closeDialog();
-  $('#app').innerHTML=`<section class="login-screen"><div class="brand-mark">${icon('chart')}</div><div class="eyebrow">TEAM PROGRESS</div><h1>Dein Trainingskonto</h1><p>${esc(message)}</p><a class="primary-button full-width" href="/signin-with-chatgpt?return_to=%2F" target="_top">Mit ChatGPT anmelden</a><p class="login-detail">Jede Person nutzt ihr eigenes Konto. Trainingsdaten sind nur für die angemeldete Person verfügbar.</p><button class="text-button" data-action="retry-account">Erneut prüfen</button></section>`;
+let authMode='login';
+const authLabels={login:'Anmelden',signup:'Konto erstellen',magic:'Anmeldelink senden',reset:'Passwort zurücksetzen',password:'Neues Passwort speichern'};
+function loginScreen(message='Training und Gewohnheiten in deinem eigenen Konto.') {
+ authenticated=false;sync?.stop();if($('#dialog').open)closeDialog();
+ $('#app').innerHTML=`<section class="login-screen"><div class="brand-mark">${icon('chart')}</div><div class="eyebrow">TEAM PROGRESS</div><h1>${authLabels[authMode]}</h1><p>${esc(message)}</p><form id="auth-form"><label ${authMode==='password'?'hidden':''}>E-Mail<input name="email" type="email" autocomplete="email" ${authMode==='password'?'':'required'}></label>${['login','signup','password'].includes(authMode)?`<label>Passwort<input name="password" type="password" autocomplete="${authMode==='login'?'current-password':'new-password'}" minlength="${authMode==='login'?1:8}" required></label>`:''}<p id="auth-error" role="alert"></p><button class="primary-button full-width" type="submit">${authLabels[authMode]}</button></form><div class="auth-options">${Object.entries(authLabels).filter(([m])=>m!=='password'&&m!==authMode).map(([m,l])=>`<button class="text-button" data-auth-mode="${m}">${l}</button>`).join('')}</div></section>`;
 }
+document.addEventListener('click',e=>{const b=e.target.closest('[data-auth-mode]');if(b){authMode=b.dataset.authMode;loginScreen();}});
+document.addEventListener('submit',async e=>{
+ if(e.target.id!=='auth-form')return;e.preventDefault();const form=e.target,button=form.querySelector('button');button.disabled=true;
+ try{const data=await authenticate(authMode,form.elements.email.value.trim(),form.elements.password?.value||'');if(authMode==='login'||authMode==='password'||(authMode==='signup'&&data.session)){authMode='login';await boot();}else{form.reset();$('#auth-error').textContent=authMode==='signup'?'Bitte bestätige deine E-Mail-Adresse.':'Wenn ein passendes Konto existiert, erhältst du eine E-Mail. Öffne den Link in diesem Browser.';}}
+ catch(error){$('#auth-error').textContent=error.message==='Invalid login credentials'?'E-Mail oder Passwort stimmt nicht.':error.message;}
+ finally{button.disabled=false;}
+});
+window.addEventListener('progress-password-recovery',()=>{authMode='password';loginScreen('Wähle ein neues Passwort mit mindestens 8 Zeichen.');});
 function authLost(){forgetAccount();state=emptyState();loginScreen('Deine Anmeldung hat sich geändert. Bitte melde dich erneut an.');}
 async function boot(){
   authenticated=false;sync?.stop();$('#app').innerHTML='<div class="login-screen" role="status">Anmeldung wird geprüft …</div>';
   try{
-    const result=await resolveAccount();if(!result.account){loginScreen(result.offline?'Bitte melde dich zunächst mit Internetverbindung an.':undefined);return;}
+    const result=await resolveAccount();if(recoveryRequired()){authMode='password';loginScreen('Wähle ein neues Passwort mit mindestens 8 Zeichen.');return;}if(!result.account){loginScreen(result.offline?'Bitte melde dich zunächst mit Internetverbindung an.':undefined);return;}
     try{state=loadState();storageError=false;}catch{state=emptyState();storageError=true;}
     refreshCatalog();authenticated=true;
     sync=createSync({getState:()=>state,setState:s=>{state=s;refreshCatalog();},save:saveState,render,isBusy:()=>view==='workout'||$('#dialog').open,onAuthLost:authLost,onStatus:()=>{document.querySelectorAll('#sync-status,[data-cloud-status]').forEach(el=>el.textContent=sync.status());}});
     render();sync.start();
   }catch(err){loginScreen(err.message||'Anmeldung derzeit nicht erreichbar. Bitte erneut versuchen.');}
 }
-document.addEventListener('click',event=>{if(event.target.closest('[data-logout-link]')){sync?.stop();forgetAccount();state=emptyState();loginScreen('Du bist abgemeldet.');}});
+document.addEventListener('click',async event=>{if(event.target.closest('[data-logout-link]')){try{sync?.stop();await signOut();state=emptyState();authMode='login';loginScreen('Du bist abgemeldet.');}catch(error){toast(error.message);}}});
 window.addEventListener('storage',event=>{if(event.key===accountStorageKey){let next;try{next=JSON.parse(event.newValue||'null');}catch{}if(next?.id!==currentAccount()?.id){sync?.stop();state=emptyState();loginScreen('Das Konto wurde in einem anderen Fenster gewechselt. Bitte erneut anmelden.');}}});
 boot();
 setInterval(updateTimers, 1000);

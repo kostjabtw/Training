@@ -1,3 +1,5 @@
+> Lokale Migrationsversion: Die E-Mail-Anmeldung und Speicherung wurden auf Supabase vorbereitet. Einrichtung und offene Live-Prüfungen: [supabase/README.md](supabase/README.md). Die folgende Beschreibung dokumentiert teilweise noch die bisher veröffentlichte Sites-Version.
+
 # Team Progress · Version 0.4
 
 Mobile Web-App, nach den Bildreferenzen gestaltet, für spätere Verpackung mit Capacitor vorbereitet. Der ursprüngliche V11-Split bleibt der unveränderte Startplan.

@@ -1,5 +1,5 @@
 import { validateBackup, mergeStates } from './domain.js';
-import { currentAccount } from './account.js';
+import { currentAccount, cloudRequest } from './account.js';
 export function createSync(c) {
  let stopped=false,running=false,timer,interval,controller,message='Cloud-Speicher wird verbunden …',dirty=false;
  const update=s=>{message=s;c.onStatus?.();};
@@ -12,14 +12,15 @@ export function createSync(c) {
   const userId=currentAccount().id;
   try{
    for(let attempt=0;attempt<3;attempt++){
-    const response=await fetch('./api/sync',{headers:{Accept:'application/json'},cache:'no-store',signal:controller.signal});
+    const response=await cloudRequest('GET');
     if(response.status===401){authLost();return false;}
     if(!response.ok||!response.headers.get('content-type')?.includes('application/json'))throw new Error('Cloud derzeit nicht erreichbar · Änderungen bleiben auf diesem Gerät.');
     const remote=await response.json();
+    if(stopped)return false;
     if(remote.userId!==userId||currentAccount()?.id!==userId){authLost();return false;}
     const original=JSON.stringify(c.getState());
     const merged=remote.data?mergeStates(c.getState(),validateBackup(remote.data)):c.getState();
-    const result=await fetch('./api/sync',{method:'PUT',signal:controller.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,revision:remote.revision,data:{...merged,active:null}})});
+    const result=await cloudRequest('PUT',{userId,revision:remote.revision,data:{...merged,active:null}});
     if(result.status===401){authLost();return false;}
     if(result.status===409){const error=await result.json();if(error.error==='account_changed'){authLost();return false;}continue;}
     if(!result.ok)throw new Error('Cloud-Speichern fehlgeschlagen · Änderungen bleiben auf diesem Gerät.');
