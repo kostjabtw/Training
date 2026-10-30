@@ -11,15 +11,15 @@ export async function resolveAccount(){
  if(!data.session){forgetAccount();return{account:null};}
  let user=data.session.user;
  if(navigator.onLine){const result=await supabase.auth.getUser();if(result.error)throw new Error('Deine Anmeldung konnte nicht geprüft werden. Bitte erneut anmelden.');user=result.data.user;}
- account={id:user.id,email:user.email||''};localStorage.setItem(ACCOUNT_KEY,JSON.stringify(account));return{account,offline:!navigator.onLine};
+ account={id:user.id,email:user.email||'',name:user.user_metadata?.full_name||''};localStorage.setItem(ACCOUNT_KEY,JSON.stringify(account));return{account,offline:!navigator.onLine};
 }
 export function scopedKey(){if(!account)throw new Error('Bitte zuerst anmelden.');return 'team-progress:supabase-data:'+account.id;}
 export const accountStorageKey=ACCOUNT_KEY;
 export async function signOut(){const {error}=await supabase.auth.signOut({scope:'local'});if(error)throw error;forgetAccount();}
-export async function authenticate(mode,email,password){
+export async function authenticate(mode,email,password,name=''){
  const redirectTo=location.origin+location.pathname;let result;
  if(mode==='login')result=await supabase.auth.signInWithPassword({email,password});
- else if(mode==='signup')result=await supabase.auth.signUp({email,password,options:{emailRedirectTo:redirectTo}});
+ else if(mode==='signup')result=await supabase.auth.signUp({email,password,options:{emailRedirectTo:redirectTo,data:{full_name:name}}});
  else if(mode==='magic')result=await supabase.auth.signInWithOtp({email,options:{emailRedirectTo:redirectTo,shouldCreateUser:false}});
  else if(mode==='reset')result=await supabase.auth.resetPasswordForEmail(email,{redirectTo});
  else if(mode==='password'){result=await supabase.auth.updateUser({password});if(!result.error)recovery=false;}
